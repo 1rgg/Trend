@@ -1,91 +1,83 @@
-# Asset Trend
+# Asset Trend · 实时版
 
-一个可部署在 **GitHub Pages** 上的纯静态资产走势查询页面。
+一个**纯前端**的资产走势查询页面，浏览器直接调用东方财富公开 JSONP 接口获取**实时**行情，无需后端、无需预先抓取数据，可直接部署到 GitHub Pages 等静态托管。
 
-支持查询并展示 **指数、基金、股票** 的历史走势，包含搜索/选择入口、时间区间筛选、走势图表、关键指标摘要及数据来源说明。所有数据均通过 [AkShare](https://www.akshare.xyz/) 预先抓取，转换为静态 JSON 文件供前端加载，完全适配 GitHub Pages 的静态部署限制。
+支持**任意代码搜索**并展示 A 股、指数、ETF 的分时 / 日 K / 周 K / 月 K 走势，以及场外基金的净值历史与盘中实时估值。
+
+## 特性
+
+- **实时走势**：当日分时图盘中实时刷新；日 / 周 / 月 K 线随取随查
+- **任意搜索**：输入中文名称、6 位代码或拼音首字母即可模糊匹配（如「茅台」「006480」「纳指」）
+- **场外基金**：单位净值历史曲线 + 盘中实时估算（fundgz）
+- **复权切换**：前复权 / 不复权 / 后复权
+- **关键指标**：最新价、涨跌幅、年化波动率、最大回撤、区间最高 / 最低
+- **纯静态部署**：无后端依赖，GitHub Pages / Cloudflare Pages / Vercel 直接托管
 
 ## 在线预览
 
-开启 GitHub Pages 后访问：`https://<你的用户名>.github.io/<仓库名>/`
+部署到 GitHub Pages 后访问：`https://<你的用户名>.github.io/<仓库名>/`
 
 ## 项目结构
 
 ```
 .
-├── index.html              # 入口页面
-├── css/style.css           # 样式
-├── js/app.js               # 前端逻辑（ECharts 渲染）
-├── data/                   # 生成的静态 JSON 数据
-│   ├── index.json          # 资产目录
-│   ├── 000001.json         # 上证指数
-│   └── ...
-├── scripts/
-│   └── fetch_data.py       # AkShare 数据抓取脚本
-├── requirements.txt        # Python 依赖
-├── .github/workflows/
-│   └── update-and-deploy.yml  # 定时更新数据并部署 Pages
+├── index.html        # 入口页面（搜索框 / 周期 / 复权 / 区间 / 自动刷新）
+├── css/style.css     # 样式
+├── js/app.js         # 前端逻辑（JSONP 接口封装 + ECharts 渲染）
 └── README.md
 ```
 
-## 本地使用
+## 本地预览
 
-### 1. 安装依赖
-
-```bash
-pip install -r requirements.txt
-```
-
-### 2. 生成数据
+无需安装任何依赖，只要一个静态服务器：
 
 ```bash
-# 拉取内置资产池近一年数据
-python scripts/fetch_data.py
-
-# 仅更新指定资产
-python scripts/fetch_data.py --assets 000001,006480 --days 180
-```
-
-### 3. 本地预览
-
-```bash
+# Python
 python -m http.server 8000
 # 访问 http://localhost:8000
 ```
 
-## 支持的资产
+打开后在搜索框输入资产名称 / 代码即可。
 
-默认内置资产池可在 `scripts/fetch_data.py` 中的 `DEFAULT_ASSETS` 修改：
+## 数据来源
 
-- 指数：上证指数、沪深300、科创50、创业板指、上证科创板芯片指数
-- 基金：广发纳斯达克100ETF联接(QDII)C、易方达上证科创板芯片ETF联接C
-- 股票：贵州茅台、五粮液
+均为东方财富公开接口（[AkShare](https://www.akshare.xyz/) 底层亦抓取同一来源）：
+
+| 数据 | 接口 |
+|------|------|
+| 代码搜索 | `searchapi.eastmoney.com/api/suggest/get` |
+| 历史 K 线 | `push2his.eastmoney.com/api/qt/stock/kline/get` |
+| 当日分时 | `push2his.eastmoney.com/api/qt/stock/trends2/get` |
+| 基金估值 | `fundgz.1234567.com.cn/js/{code}.js` |
+| 基金净值 | `fund.eastmoney.com/pingzhongdata/{code}.js` |
+
+> ⚠️ 接口为非官方公开，无 SLA 保证，偶发限流或字段变更属正常现象。
 
 ## 部署到 GitHub Pages
 
 1. 将本项目 push 到 GitHub 仓库。
 2. 进入仓库 **Settings → Pages → Build and deployment**。
-3. Source 选择 **GitHub Actions**。
-4. 工作流 `.github/workflows/update-and-deploy.yml` 已配置好：
-   - 每日北京时间 09:00 自动拉取最新数据并部署。
-   - 支持手动触发 `workflow_dispatch`。
-   - `push` 到 `main` 分支时也会自动部署。
+3. Source 选择 **Deploy from a branch**，分支选 `main`、目录选 `/ (root)`。
+4. 保存后稍等片刻即可通过 Pages 链接访问。
+
+> 本项目不再需要 GitHub Actions 定时抓取数据，因为行情全部实时获取。
 
 ## 关键指标说明
 
 | 指标 | 说明 |
 |------|------|
-| 最新收盘价 | 当前选中区间最后一天的收盘价/净值 |
-| 区间涨跌幅 | `(期末 - 期初) / 期初` |
+| 最新价 | 当前区间最后一根 K 线的收盘价 / 最新分时价 |
+| 涨跌幅 | K 线：区间首末收盘变化；分时：相对昨收 |
 | 年化波动率 | 日收益率标准差 × √252 |
 | 最大回撤 | 区间内从最高点到最低点的最大跌幅 |
-| 区间最高价/最低价 | 区间内收盘价的最大/最小值 |
+| 区间最高 / 最低 | 区间内收盘价的最大 / 最小值 |
 
 ## 技术栈
 
 - 前端：原生 HTML5 / CSS3 / ES6
-- 图表：[Apache ECharts](https://echarts.apache.org/)（CDN）
-- 数据：[AkShare](https://www.akshare.xyz/) + Python
-- 部署：GitHub Pages + GitHub Actions
+- 图表：[Apache ECharts](https://echarts.apache.org/)（CDN，含 candlestick）
+- 数据：东方财富公开 JSONP 接口
+- 部署：任意静态托管（GitHub Pages 等）
 
 ## 免责声明
 

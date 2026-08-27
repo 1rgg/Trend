@@ -201,6 +201,138 @@ body {
   font-size: 0.85rem;
 }
 
+/* 搜索框 */
+.search-block {
+  position: relative;
+}
+
+.search-wrap {
+  position: relative;
+}
+
+.search-wrap input[type="text"] {
+  width: 100%;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 0.95rem;
+  background: #fff;
+  color: var(--text);
+  box-sizing: border-box;
+}
+
+.search-wrap input[type="text"]:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+.suggest-list {
+  display: none;
+  position: absolute;
+  z-index: 50;
+  left: 0;
+  right: 0;
+  top: calc(100% + 4px);
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.suggest-item,
+.suggest-empty {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.55rem 0.8rem;
+  cursor: pointer;
+  border-bottom: 1px solid #f3f4f6;
+  font-size: 0.9rem;
+}
+
+.suggest-item:last-child {
+  border-bottom: none;
+}
+
+.suggest-item.hover {
+  background: #eff6ff;
+}
+
+.s-code {
+  font-family: "SF Mono", Consolas, monospace;
+  color: var(--primary);
+  font-weight: 600;
+  min-width: 64px;
+}
+
+.s-name {
+  flex: 1;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.s-type {
+  font-size: 0.72rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  background: #e5e7eb;
+  color: #4b5563;
+  flex-shrink: 0;
+}
+
+.s-type.fund {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.suggest-empty {
+  color: var(--text-muted);
+  cursor: default;
+  justify-content: center;
+}
+
+/* 复权 / 周期 chips 复用 .range-chips */
+
+/* 自动刷新 */
+.refresh-row {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.checkbox-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.checkbox-label input {
+  cursor: pointer;
+}
+
+.hint {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.warn {
+  margin-top: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  background: #fff7ed;
+  border-left: 3px solid #f59e0b;
+  border-radius: 4px;
+  color: #92400e;
+  font-size: 0.85rem;
+}
+
 @media (max-width: 640px) {
   .date-row {
     grid-template-columns: 1fr;

@@ -3,27 +3,57 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>资产走势查询 - Asset Trend</title>
+  <title>资产走势查询 · 实时版 - Asset Trend</title>
   <link rel="stylesheet" href="./css/style.css" />
   <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
 </head>
 <body>
   <header class="site-header">
-    <h1>资产走势查询</h1>
-    <p class="subtitle">指数 / 基金 / 股票历史走势 · 纯静态部署 · 数据来自 AkShare</p>
+    <h1>资产走势查询 · 实时版</h1>
+    <p class="subtitle">指数 / 基金 / 股票 实时走势 · 任意代码搜索 · 纯前端直连东方财富 · 可部署 GitHub Pages</p>
   </header>
 
   <main class="container">
+    <!-- 搜索 -->
     <section class="controls card">
-      <div class="control-row">
-        <label for="asset-select">选择资产</label>
-        <select id="asset-select" aria-label="选择资产">
-          <option value="" disabled selected>加载中…</option>
-        </select>
+      <div class="control-row search-block">
+        <label for="search-input">搜索资产（名称 / 代码 / 拼音）</label>
+        <div class="search-wrap">
+          <input
+            id="search-input"
+            type="text"
+            autocomplete="off"
+            placeholder="输入 茅台 / 006480 / 纳斯达克 / nndx 后按回车"
+          />
+          <div id="suggest-list" class="suggest-list"></div>
+        </div>
       </div>
 
+      <!-- 周期 -->
       <div class="control-row">
-        <label>时间区间</label>
+        <label>周期</label>
+        <div class="range-chips" id="period-chips">
+          <button data-period="trend">分时</button>
+          <button data-period="1d" class="active">日K</button>
+          <button data-period="week">周K</button>
+          <button data-period="month">月K</button>
+          <button data-period="nav" style="display:none">净值</button>
+        </div>
+      </div>
+
+      <!-- 复权 -->
+      <div class="control-row" id="fqt-row">
+        <label>复权</label>
+        <div class="range-chips" id="fqt-chips">
+          <button data-fqt="1" class="active">前复权</button>
+          <button data-fqt="0">不复权</button>
+          <button data-fqt="2">后复权</button>
+        </div>
+      </div>
+
+      <!-- 区间 -->
+      <div class="control-row range-block">
+        <label>区间</label>
         <div class="range-chips" id="range-chips">
           <button data-range="1m">近1月</button>
           <button data-range="3m">近3月</button>
@@ -33,7 +63,7 @@
         </div>
       </div>
 
-      <div class="control-row date-row">
+      <div class="control-row date-row range-block">
         <div>
           <label for="start-date">开始日期</label>
           <input type="date" id="start-date" />
@@ -44,15 +74,25 @@
         </div>
         <button id="apply-date" class="btn-secondary">应用</button>
       </div>
+
+      <!-- 自动刷新 -->
+      <div class="control-row refresh-row range-block">
+        <label class="checkbox-label">
+          <input type="checkbox" id="auto-refresh" />
+          盘中自动刷新分时（每 30 秒）
+        </label>
+        <span class="hint" id="market-status"></span>
+      </div>
     </section>
 
+    <!-- 指标 -->
     <section class="metrics card" id="metrics-panel">
       <div class="metric">
-        <span class="metric-label">最新收盘价</span>
+        <span class="metric-label">最新价</span>
         <strong class="metric-value" id="metric-close">-</strong>
       </div>
       <div class="metric">
-        <span class="metric-label">区间涨跌幅</span>
+        <span class="metric-label">涨跌幅</span>
         <strong class="metric-value" id="metric-return">-</strong>
       </div>
       <div class="metric">
@@ -64,37 +104,41 @@
         <strong class="metric-value" id="metric-dd">-</strong>
       </div>
       <div class="metric">
-        <span class="metric-label">区间最高价</span>
+        <span class="metric-label">区间最高</span>
         <strong class="metric-value" id="metric-high">-</strong>
       </div>
       <div class="metric">
-        <span class="metric-label">区间最低价</span>
+        <span class="metric-label">区间最低</span>
         <strong class="metric-value" id="metric-low">-</strong>
       </div>
+      <div id="metric-extra" style="display:contents"></div>
     </section>
 
+    <!-- 图表 -->
     <section class="chart-container card">
       <div id="trend-chart" class="chart"></div>
     </section>
 
+    <!-- 说明 -->
     <section class="info card">
       <h2>关于数据</h2>
       <p>
-        本页面为纯静态页面，所有数据均来自 AkShare 预先抓取并转换为 JSON 文件。
-        由于 GitHub Pages 仅支持静态资源托管，无法实时调用后端接口，因此数据每日/每周需通过
-        <code>scripts/fetch_data.py</code> 重新生成并提交。
+        本页面为纯静态前端，浏览器直接调用东方财富公开 JSONP 接口获取
+        <strong>实时</strong>行情，无需后端、无需预先抓取。支持任意 A 股、指数、ETF、
+        场外基金的代码搜索与走势查看。
       </p>
       <ul>
-        <li>指数：东方财富 A 股指数历史行情（前复权不适用）</li>
-        <li>股票：A 股个股历史行情（前复权）</li>
-        <li>基金：场外基金净值 / ETF 历史行情</li>
+        <li><strong>股票 / 指数 / ETF</strong>：当日分时（盘中实时刷新）+ 日/周/月 K 线，支持前/后复权</li>
+        <li><strong>场外基金</strong>：单位净值历史曲线 + 盘中实时估算（fundgz）</li>
+        <li>搜索支持中文名称、6 位代码、拼音首字母</li>
       </ul>
-      <p class="source-note" id="source-note">数据更新于：-</p>
+      <p class="warn">注意：数据接口为东方财富非官方公开接口，无 SLA 保证，偶发限流或字段变更属正常现象。</p>
+      <p class="source-note" id="source-note">数据来源：东方财富（实时）</p>
     </section>
   </main>
 
   <footer class="site-footer">
-    <p>Powered by AkShare + ECharts · 仅供学习研究，不构成投资建议</p>
+    <p>Powered by 东方财富 JSONP + ECharts · 仅供学习研究，不构成投资建议</p>
   </footer>
 
   <script src="./js/app.js"></script>
