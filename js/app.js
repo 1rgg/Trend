@@ -375,6 +375,9 @@
   const els = {
     searchInput: document.getElementById("search-input"),
     suggestList: document.getElementById("suggest-list"),
+    favToggle: document.getElementById("fav-toggle"),
+    favRow: document.getElementById("fav-row"),
+    favChips: document.getElementById("fav-chips"),
     currentInfo: document.getElementById("current-info"),
     periodChips: document.getElementById("period-chips"),
     fqtChips: document.getElementById("fqt-chips"),
@@ -396,6 +399,7 @@
 
   const state = {
     current: null,        // { code, name, secid, kind:'kline'|'fund', mktNum, type }
+    favs: [],             // 收藏列表 [{ code, name, secid, kind }]
     period: "1d",         // trend | 1d | week | month
     fqt: 1,               // 0 1 2
     range: "1y",          // 1m 3m 6m 1y all
@@ -405,6 +409,95 @@
   };
 
   const PERIOD_KEY = { "1d": "day", week: "week", month: "month" };
+
+  /* ============================================================
+   * 4.5 收藏快速查询（localStorage 持久化）
+   * ============================================================ */
+  const FAV_KEY = "asset_trend_favs";
+
+  function loadFavs() {
+    try {
+      const raw = localStorage.getItem(FAV_KEY);
+      const arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function saveFavs(favs) {
+    try {
+      localStorage.setItem(FAV_KEY, JSON.stringify(favs));
+    } catch (e) { /* 存储不可用时静默降级为内存态 */ }
+  }
+
+  // 判断某资产是否已收藏（按 secid/kind 唯一）
+  function isFav(c) {
+    if (!c) return false;
+    return state.favs.some(function (f) {
+      return (c.kind === "fund" ? f.code === c.code : f.secid === c.secid) && f.kind === c.kind;
+    });
+  }
+
+  function toggleFav() {
+    const c = state.current;
+    if (!c) return;
+    if (isFav(c)) {
+      state.favs = state.favs.filter(function (f) {
+        return !(c.kind === "fund" ? f.code === c.code : f.secid === c.secid) || f.kind !== c.kind;
+      });
+    } else {
+      state.favs.push({ code: c.code, name: c.name, secid: c.secid, kind: c.kind });
+      if (state.favs.length > 20) state.favs.shift(); // 上限保护
+    }
+    saveFavs(state.favs);
+    renderFavs();
+  }
+
+  function renderFavs() {
+    els.favChips.innerHTML = "";
+    els.favRow.style.display = state.favs.length ? "" : "none";
+    state.favs.forEach(function (f, idx) {
+      const chip = document.createElement("div");
+      chip.className = "fav-chip" +
+        ((state.current && isFav(state.current) &&
+          (state.current.kind === "fund" ? f.code === state.current.code : f.secid === state.current.secid)) ? " active" : "");
+      const nameSpan = document.createElement("span");
+      nameSpan.className = "fav-name";
+      nameSpan.textContent = f.name + " " + f.code;
+      nameSpan.addEventListener("click", function () { pickFav(f); });
+      const del = document.createElement("span");
+      del.className = "fav-del";
+      del.textContent = "×";
+      del.title = "删除收藏";
+      del.addEventListener("click", function () {
+        state.favs.splice(idx, 1);
+        saveFavs(state.favs);
+        renderFavs();
+      });
+      chip.appendChild(nameSpan);
+      chip.appendChild(del);
+      els.favChips.appendChild(chip);
+    });
+    syncFavToggle();
+  }
+
+  function syncFavToggle() {
+    els.favToggle.textContent = isFav(state.current) ? "★" : "☆";
+    els.favToggle.classList.toggle("active", isFav(state.current));
+    els.favToggle.disabled = !state.current;
+  }
+
+  function pickFav(f) {
+    // 复用搜索选中链路：构造与 suggest 接口一致的对象
+    pickSuggest({
+      Code: f.code,
+      Name: f.name,
+      MktNum: f.secid ? f.secid.split(".")[0] : undefined,
+      QuoteID: f.secid,
+      Classify: f.kind === "fund" ? "OTCFUND" : "AStock",
+    }, f.kind);
+  }
 
   /* ============================================================
    * 5. 搜索建议
@@ -547,6 +640,8 @@
     // 基金默认走净值；K线类默认日K
     state.period = (kind === "fund") ? "nav" : "1d";
     syncPeriodActive();
+    syncFavToggle();
+    renderFavs();
 
     loadCurrent();
   }
@@ -1037,6 +1132,9 @@
   function init() {
     bindSearch();
     bindControls();
+    els.favToggle.addEventListener("click", toggleFav);
+    state.favs = loadFavs();
+    renderFavs();
     syncPeriodActive();
     syncFqtActive();
     syncRangeActive();
