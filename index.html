@@ -10,7 +10,7 @@
 <body>
   <header class="site-header">
     <h1>资产走势查询 · 实时版</h1>
-    <p class="subtitle">指数 / 基金 / 股票 实时走势 · 任意代码搜索 · 纯前端直连东方财富 · 可部署 GitHub Pages</p>
+    <p class="subtitle">指数 / 基金 / 股票 实时走势 · 任意代码搜索 · 纯前端直连腾讯财经 · 可部署 GitHub Pages</p>
   </header>
 
   <main class="container">
@@ -123,24 +123,24 @@
     <section class="info card">
       <h2>关于数据</h2>
       <p>
-        本页面为纯静态前端，浏览器直接调用东方财富公开 JSONP 接口获取
-        <strong>实时</strong>行情，无需后端、无需预先抓取。支持任意 A 股、指数、ETF、
-        场外基金的代码搜索与走势查看。
+        本页面为纯静态前端，浏览器直接调用腾讯财经公开行情接口获取
+        <strong>实时</strong>行情（基金净值来自东方财富），无需后端、无需预先抓取。
+        支持任意 A 股、指数、ETF、场外基金的代码搜索与走势查看。
       </p>
       <ul>
         <li><strong>股票 / 指数 / ETF</strong>：当日分时（盘中实时刷新）+ 日/周/月 K 线，支持前/后复权</li>
-        <li><strong>场外基金</strong>：单位净值历史曲线 + 盘中实时估算（fundgz）</li>
+        <li><strong>场外基金</strong>：单位净值历史曲线 + 当日涨跌展示</li>
         <li>搜索支持中文名称、6 位代码、拼音首字母</li>
       </ul>
-      <p class="warn">注意：数据接口为东方财富非官方公开接口，无 SLA 保证，偶发限流或字段变更属正常现象。</p>
-      <p class="source-note" id="source-note">数据来源：东方财富（实时）</p>
+      <p class="warn">注意：行情接口为腾讯财经非官方公开接口，无 SLA 保证，偶发限流或字段变更属正常现象。</p>
+      <p class="source-note" id="source-note">数据来源：腾讯财经（实时）</p>
     </section>
   </main>
 
   <footer class="site-footer">
-    <p>Powered by 东方财富 JSONP + ECharts · 仅供学习研究，不构成投资建议</p>
+    <p>Powered by 腾讯财经行情接口 + ECharts · 仅供学习研究，不构成投资建议</p>
   </footer>
 
-  <script src="./js/app.js"></script>
+  <script src="./js/app.js?v=20260827b"></script>
 </body>
 </html>

@@ -1,20 +1,20 @@
 /**
  * Asset Trend 实时版
- * 纯前端直连东方财富公开 JSONP 接口：代码搜索、历史 K 线、当日分时、
+ * 纯前端直连公开行情接口：代码搜索、历史 K 线、当日分时、
  * 场外基金实时估值与历史净值。无后端，纯静态可部署（GitHub Pages 等）。
  *
- * 数据来源（均为东方财富公开接口，AkShare 底层亦抓取同一来源）：
- *   - 代码搜索：searchapi.eastmoney.com/api/suggest/get
- *   - 历史 K 线：push2his.eastmoney.com/api/qt/stock/kline/get
- *   - 当日分时：push2his.eastmoney.com/api/qt/stock/trends2/get
- *   - 基金估值：fundgz.1234567.com.cn/js/{code}.js
+ * 数据来源：
+ *   - K 线 / 分时 / 实时行情：腾讯财经 web.ifzq.gtimg.cn（变量注入式脚本，免 CORS）
+ *     注：东方财富 push2his 系列 K 线接口 2026 年起加强反爬（需登录 Cookie，
+ *     否则返回空响应），已切换到腾讯财经。
+ *   - 代码搜索：searchapi.eastmoney.com（失败时降级腾讯 smartbox）
  *   - 基金净值：fund.eastmoney.com/pingzhongdata/{code}.js
  */
 (function () {
   "use strict";
 
   /* ============================================================
-   * 1. JSONP / 脚本加载工具
+   * 1. JSONP / 变量注入式脚本加载工具
    * ============================================================ */
   let jsonpCounter = 0;
   function jsonp(url, options) {
@@ -51,7 +51,41 @@
     });
   }
 
-  // 用于 pingzhongdata.js 这种「注入全局变量」式脚本（非 JSONP）
+  // 「变量注入式」接口：脚本执行后把数据赋值给 window[varName]（非回调式 JSONP）
+  // options.charset 用于 GBK 接口（如腾讯 smartbox）
+  function fetchVar(url, varName, timeout, charset) {
+    timeout = timeout || 12000;
+    return new Promise(function (resolve, reject) {
+      if (window[varName]) {
+        try { delete window[varName]; } catch (e) { window[varName] = undefined; }
+      }
+      const script = document.createElement("script");
+      let done = false;
+      script.onerror = function () { finish(reject, new Error("脚本加载失败")); };
+      script.onload = function () {
+        const val = window[varName];
+        finish(resolve, val);
+      };
+      const timer = setTimeout(function () {
+        finish(reject, new Error("数据加载超时"));
+      }, timeout);
+      function finish(fn, arg) {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        script.remove();
+        if (window[varName]) {
+          try { delete window[varName]; } catch (e) { window[varName] = undefined; }
+        }
+        fn(arg);
+      }
+      if (charset) script.charset = charset;
+      script.src = url;
+      document.body.appendChild(script);
+    });
+  }
+
+  // 用于 pingzhongdata.js 这种「注入全局变量」式脚本（取整个全局对象集合）
   function loadScriptOnce(url, timeout) {
     timeout = timeout || 12000;
     return new Promise(function (resolve, reject) {
@@ -65,22 +99,64 @@
   }
 
   /* ============================================================
-   * 2. 东方财富接口封装
+   * 2. 行情接口封装
    * ============================================================ */
   const SEARCH_URL = "https://searchapi.eastmoney.com/api/suggest/get";
-  const KLINE_URL = "https://push2his.eastmoney.com/api/qt/stock/kline/get";
-  const TREND_URL = "https://push2his.eastmoney.com/api/qt/stock/trends2/get";
+  const SMARTBOX_URL = "https://smartbox.gtimg.cn/s3/";
+  const KLINE_URL = "https://web.ifzq.gtimg.cn/appstock/app/fqkline/get";
+  const MINUTE_URL = "https://web.ifzq.gtimg.cn/appstock/app/minute/query";
   const FUND_PZ_BASE = "https://fund.eastmoney.com/pingzhongdata/";
   const SEARCH_TOKEN = "D43BF722C8E33BDC906FB84D85E96223";
 
+  // 东财搜索（支持中文 / 代码 / 拼音，带类型与 QuoteID）；偶发限流时自动重试一次
   async function searchCode(keyword) {
     if (!keyword || !keyword.trim()) return [];
     const url = SEARCH_URL +
       "?input=" + encodeURIComponent(keyword) +
       "&type=14&token=" + SEARCH_TOKEN + "&count=20";
-    const data = await jsonp(url);
-    const tbl = data && data.QuotationCodeTable;
-    return (tbl && tbl.Data) || [];
+    let lastErr = null;
+    for (let i = 0; i < 2; i++) {
+      try {
+        const data = await jsonp(url);
+        const tbl = data && data.QuotationCodeTable;
+        return (tbl && tbl.Data) || [];
+      } catch (e) {
+        lastErr = e;
+      }
+    }
+    throw lastErr || new Error("搜索失败");
+  }
+
+  // 腾讯 smartbox 搜索兜底：v_hint="sh~600519~贵州茅台~gzmt~GP-A^..."
+  async function smartboxSearch(keyword) {
+    if (!keyword || !keyword.trim()) return [];
+    const url = SMARTBOX_URL +
+      "?v=2&q=" + encodeURIComponent(keyword) + "&t=all";
+    const raw = await fetchVar(url, "v_hint", 12000, "gbk");
+    if (!raw || typeof raw !== "string") return [];
+    return raw.split("^").filter(Boolean).map(function (seg) {
+      const p = seg.split("~");
+      if (p.length < 3) return null;
+      const mkt = (p[0] || "").toLowerCase();
+      if (mkt !== "sh" && mkt !== "sz") return null; // 仅支持沪深标的
+      return {
+        Code: p[1],
+        Name: p[2],
+        MktNum: mkt === "sh" ? "1" : "2",
+        QuoteID: (mkt === "sh" ? "1." : "0.") + p[1],
+        Classify: /^F/.test(p[4] || "") ? "OTCFUND" : "AStock",
+        SecurityTypeName: "股票",
+      };
+    }).filter(Boolean);
+  }
+
+  // 搜索入口：东财优先，失败降级腾讯
+  async function doSearch(keyword) {
+    try {
+      const r = await searchCode(keyword);
+      if (r.length) return r;
+    } catch (e) { /* ignore, fallback */ }
+    return await smartboxSearch(keyword);
   }
 
   // secid 前缀：优先用搜索接口的 MktNum，否则按代码规律兜底
@@ -98,73 +174,75 @@
     return "1." + code;
   }
 
+  // secid → 腾讯代码符号（如 1.600519 → sh600519）
+  function secidToSymbol(secid) {
+    const parts = String(secid).split(".");
+    const prefix = parts[0] === "1" ? "sh" : "sz";
+    return prefix + parts[1];
+  }
+
   // 判断是否为场外开放式基金（走净值路径，不走 K 线）
   function isOpenFund(item) {
     return (item && item.Classify) === "OTCFUND";
   }
 
-  // klt: 101=日 102=周 103=月；fqt: 0 不复权 1 前复权 2 后复权
+  // 腾讯 K 线：param={symbol},{day|week|month},,,{count},{qfq|hfq|}
+  // 返回键名带复权前缀（qfqday / hfqday / day），行为 [date,open,close,high,low,volume]
+  const FQ_PREFIX = { 0: "", 1: "qfq", 2: "hfq" };
+
   async function fetchKline(secid, opts) {
     opts = opts || {};
-    const klt = opts.klt || 101;
-    const fqt = opts.fqt === undefined ? 1 : opts.fqt;
-    const beg = opts.beg || "19900101";
-    const end = opts.end || "20500101";
-    const lmt = opts.lmt || 1200;
-    const fields1 = "f1,f2,f3,f4,f5,f6";
-    const fields2 = "f51,f52,f53,f54,f55,f56,f57,f58";
+    const periodKey = opts.periodKey || "day"; // day | week | month
+    const fq = FQ_PREFIX[opts.fqt === undefined ? 1 : opts.fqt];
+    const count = opts.count || 1200;
+    const symbol = secidToSymbol(secid);
     const url = KLINE_URL +
-      "?secid=" + secid +
-      "&fields1=" + fields1 +
-      "&fields2=" + fields2 +
-      "&klt=" + klt + "&fqt=" + fqt +
-      "&beg=" + beg + "&end=" + end + "&lmt=" + lmt;
-    const data = await jsonp(url);
-    const klines = (data && data.data && data.data.klines) || [];
-    // 每行 "date,open,close,high,low,vol,amount,amplitude"
-    return klines.map(function (line) {
-      const p = line.split(",");
+      "?param=" + [symbol, periodKey, "", "", count, fq].join(",") +
+      "&_var=__kline";
+    const data = await fetchVar(url, "__kline");
+    const node = data && data.data && data.data[symbol];
+    const rows = node && ((fq ? node[fq + periodKey] : node[periodKey]) || node[periodKey]) || [];
+    return rows.map(function (r) {
       return {
-        date: p[0],
-        open: +p[1],
-        close: +p[2],
-        high: +p[3],
-        low: +p[4],
-        volume: +p[5],
-        amount: +p[6] || 0,
+        date: r[0],
+        open: +r[1],
+        close: +r[2],
+        high: +r[3],
+        low: +r[4],
+        volume: +r[5] || 0,
+        amount: +(r[6] || 0) || 0,
       };
     });
   }
 
+  // 当日分时："HHMM price 累计量 累计额"，均价 = 累计额 / 累计量；昨收取 qt 第 5 位
   async function fetchTrend(secid) {
-    const fields1 = "f1,f2,f3,f4,f5,f6,f7,f8,f9,f10,f11,f12,f13";
-    const fields2 = "f51,f52,f53,f54,f55,f56,f57,f58";
-    const url = TREND_URL +
-      "?secid=" + secid +
-      "&fields1=" + fields1 +
-      "&fields2=" + fields2 +
-      "&iscr=0&ndays=1";
-    const data = await jsonp(url);
-    const d = (data && data.data) || {};
-    const trends = d.trends || [];
-    // "2024-01-02 09:30,price,avg,vol,amount"
-    const points = trends.map(function (line) {
-      const p = line.split(",");
-      const n = p.length;
-      // 列数可能 5 或 7，统一用倒数取 vol/amount
-      return {
-        time: p[0],
+    const symbol = secidToSymbol(secid);
+    const url = MINUTE_URL + "?code=" + symbol + "&_var=__minute";
+    const data = await fetchVar(url, "__minute");
+    const node = data && data.data && data.data[symbol];
+    const rawPoints = (node && node.data && node.data.data) || [];
+    const qt = (node && node.qt && node.qt[symbol]) || [];
+    let prevVol = 0;
+    const points = rawPoints.map(function (line) {
+      const p = line.split(" ");
+      const cumVol = +p[2] || 0;
+      const cumAmt = +p[3] || 0;
+      const t = ("0000" + p[0]).slice(-4);
+      const pt = {
+        time: t.slice(0, 2) + ":" + t.slice(2),
         price: +p[1],
-        avg: +p[2],
-        volume: +p[n - 2],
-        amount: +p[n - 1] || 0,
+        volume: Math.max(cumVol - prevVol, 0),
       };
+      pt.avg = cumVol ? cumAmt / cumVol : pt.price;
+      prevVol = cumVol;
+      return pt;
     });
     return {
       points: points,
-      preClose: +d.preClose || 0,
-      name: d.name || "",
-      code: d.code || "",
+      preClose: +qt[4] || 0,
+      name: qt[1] || "",
+      code: qt[2] || "",
     };
   }
 
@@ -326,7 +404,7 @@
     suggestHover: -1,
   };
 
-  const PERIOD_KLT = { "1d": 101, week: 102, month: 103 };
+  const PERIOD_KEY = { "1d": "day", week: "week", month: "month" };
 
   /* ============================================================
    * 5. 搜索建议
@@ -380,7 +458,7 @@
   async function loadSuggest(keyword) {
     let results;
     try {
-      results = await searchCode(keyword);
+      results = await doSearch(keyword);
     } catch (e) {
       renderSuggest([], "搜索失败，稍后重试");
       return;
@@ -524,8 +602,7 @@
   }
 
   async function loadKlineRange(c) {
-    const klt = PERIOD_KLT[state.period] || 101;
-    const records = await fetchKline(c.secid, { klt: klt, fqt: state.fqt });
+    const records = await fetchKline(c.secid, { periodKey: PERIOD_KEY[state.period] || "day", fqt: state.fqt });
     // 区间筛选
     let all = records;
     let start = null, end = null;
@@ -543,7 +620,7 @@
     const filtered = (state.range === "all") ? records : filterData(records, start, end);
     renderCandle(filtered, c);
     updateMetrics(filtered);
-    els.sourceNote.textContent = "数据来源：东方财富（实时） · 更新于 " + new Date().toLocaleString("zh-CN");
+    els.sourceNote.textContent = "数据来源：腾讯财经（实时） · 更新于 " + new Date().toLocaleString("zh-CN");
     setChartLoading(false);
   }
 
@@ -551,7 +628,7 @@
     const r = await fetchTrend(c.secid);
     renderTrend(r, c);
     updateTrendMetrics(r);
-    els.sourceNote.textContent = "数据来源：东方财富分时（实时） · 更新于 " + new Date().toLocaleString("zh-CN");
+    els.sourceNote.textContent = "数据来源：腾讯财经分时（实时） · 更新于 " + new Date().toLocaleString("zh-CN");
     setChartLoading(false);
   }
 
